@@ -1,0 +1,682 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+}
+
+// Enums
+enum Purpose {
+  SALE
+  RENT
+}
+
+enum LocationPrivacy {
+  EXACT
+  APPROXIMATE
+  AREA_ONLY
+}
+
+enum PropertyStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  RESERVED
+  SOLD
+  ARCHIVED
+  REJECTED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum MediaStatus {
+  ACTIVE
+  PENDING_REVIEW
+  DELETED
+}
+
+// Configurable Property Types
+model PropertyType {
+  id          String     @id @default(uuid())
+  nameEn      String     @unique // e.g., "Apartment", "Villa"
+  nameAr      String     @unique // e.g., "شقة", "فيلا"
+  isActive    Boolean    @default(true)
+  properties  Property[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+// User Model Expansion
+model User {
+  id                String     @id @default(uuid())
+  firstName         String?
+  lastName          String?
+  email             String     @unique
+  phone             String?    @unique
+  password          String
+  role              String     @default("USER") // USER, AGENT, ADMIN
+  
+  // Verification status
+  isEmailVerified   Boolean    @default(false)
+  isPhoneVerified   Boolean    @default(false)
+  
+  // Agent Info
+  company           String?
+  licenseNumber     String?
+  isVerifiedAgent   Boolean    @default(false)
+  
+  // Relations
+  properties        Property[] @relation("PropertyOwner")
+  anonymousSessions AnonymousSession[]
+  sessions          UserSession[]
+  notificationPrefs NotificationPreference?
+  favorites         Favorite[]
+  savedSearches     SavedSearch[]
+  events            UserEvent[]
+  agentVerification AgentVerification?
+  agentLeads        Lead[]  @relation("AgentLeads")
+  userLeads         Lead[]  @relation("UserLeads")
+
+  // E11 Personalization
+  preference          UserPreference?
+  recentlyViewed      RecentlyViewed[]
+  recommendationFeedback RecommendationFeedback[]
+  
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model UserSession {
+  id               String   @id @default(uuid())
+  userId           String
+  refreshTokenHash String
+  deviceName       String?
+  ipAddress        String?
+  userAgent        String?
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+  lastUsedAt       DateTime @default(now())
+
+  user             User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model NotificationPreference {
+  id        String @id @default(uuid())
+  userId    String @unique
+  email     Boolean @default(true)
+  sms       Boolean @default(false)
+  push      Boolean @default(true)
+  whatsapp  Boolean @default(false)
+
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Epic 9: Leads & Viewing CRM ────────────────────────────────────────────
+
+model Lead {
+  id          String   @id @default(uuid())
+  agentId     String
+  userId      String?  // null for anonymous leads
+
+  name        String
+  email       String?
+  phone       String?
+  message     String?
+
+  source      String   @default("PROPERTY_PAGE") // PROPERTY_PAGE, SEARCH, AI_SEARCH, WHATSAPP, etc.
+  status      String   @default("NEW") // NEW, CONTACTED, QUALIFIED, VIEWING_BOOKED, VIEWING_COMPLETED, NEGOTIATION, OFFER, RESERVED, SOLD, LOST
+
+  // E11 Scoring & Intent
+  score                 Int      @default(0) // 0 - 100
+  scoreCategory         String   @default("COLD") // COLD, WARM, HOT, VERY_HOT
+  intent                String   @default("BUY") // BUY, RENT, INVEST, COMPARE, JUST_BROWSING
+  intentConfidence      Float    @default(0.8)
+  conversionProbability Float    @default(0.2) // 0.0 - 1.0 (e.g. 0.87 = 87%)
+  lostReason            String?  // PRICE, LOCATION, SIZE, FINISHING, PAYMENT_PLAN, COMPETITOR, NO_RESPONSE
+  slaStatus             String   @default("ON_TRACK") // ON_TRACK, WARNING, BREACHED
+  lastContactedAt       DateTime?
+  assignedTeam          String?
+
+  budgetMin   Float?
+  budgetMax   Float?
+
+  agent         User                  @relation("AgentLeads",   fields: [agentId], references: [id], onDelete: Cascade)
+  user          User?                 @relation("UserLeads",    fields: [userId],  references: [id])
+  propertyInterests LeadPropertyInterest[]
+  inquiries     LeadInquiry[]
+  activities    LeadActivity[]
+  notes         LeadNote[]
+  tasks         LeadTask[]
+  viewings      Viewing[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([userId])
+  @@index([status])
+  @@index([phone])
+  @@index([score])
+}
+
+model LeadInquiry {
+  id          String   @id @default(uuid())
+  leadId      String
+  propertyId  String?
+
+  inquiryType String   // CALLBACK, WHATSAPP, PRICING, PAYMENT_PLAN, AVAILABILITY, BROCHURE, BOOK_VIEWING
+  source      String   @default("PROPERTY_PAGE")
+  message     String?
+  metadata    Json?
+
+  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  property    Property? @relation(fields: [propertyId], references: [id])
+
+  createdAt   DateTime @default(now())
+
+  @@index([leadId])
+  @@index([inquiryType])
+}
+
+model LeadPropertyInterest {
+  id         String   @id @default(uuid())
+  leadId     String
+  propertyId String
+  status     String   @default("INTERESTED") // INTERESTED, NOT_INTERESTED, VIEWING_REQUESTED
+
+  lead       Lead     @relation(fields: [leadId],     references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime @default(now())
+
+  @@unique([leadId, propertyId])
+  @@index([propertyId])
+}
+
+model LeadActivity {
+  id        String   @id @default(uuid())
+  leadId    String
+  actorId   String?  // agentId who performed the action
+
+  type      String   // CALL, EMAIL, WHATSAPP, STATUS_CHANGE, NOTE, VIEWING_SCHEDULED
+  notes     String?
+  metadata  Json?    // e.g. { fromStatus: 'NEW', toStatus: 'CONTACTED' }
+
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+  @@index([type])
+}
+
+model LeadNote {
+  id        String   @id @default(uuid())
+  leadId    String
+  authorId  String?
+  content   String
+
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leadId])
+}
+
+model LeadTask {
+  id        String   @id @default(uuid())
+  leadId    String
+  agentId   String
+
+  title     String
+  dueDate   DateTime?
+  priority  String   @default("MEDIUM") // LOW, MEDIUM, HIGH
+  isDone    Boolean  @default(false)
+
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leadId])
+  @@index([agentId])
+}
+
+model Viewing {
+  id            String   @id @default(uuid())
+  leadId        String
+  propertyId    String
+  agentId       String
+
+  scheduledAt   DateTime
+  status        String   @default("REQUESTED") // REQUESTED, CONFIRMED, RESCHEDULED, COMPLETED, CANCELLED, NO_SHOW
+
+  customerNotes String?
+  agentNotes    String?
+
+  // Post-viewing feedback
+  feedbackRating  Int?     // 1-5
+  feedbackInterest String? // YES, MAYBE, NO
+  feedbackComment  String?
+
+  lead       Lead     @relation(fields: [leadId],     references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([leadId])
+  @@index([propertyId])
+  @@index([agentId])
+  @@index([scheduledAt])
+}
+
+  // Epic 1: Property Model
+model Property {
+  id               String         @id @default(uuid())
+  slug             String         @unique @default(uuid()) // Temporary default for existing
+  title            String
+  description      String?
+  virtualTourUrl   String?
+  
+  // Relations
+  propertyTypeId   String
+  propertyType     PropertyType   @relation(fields: [propertyTypeId], references: [id])
+  
+  ownerId          String
+  owner            User           @relation("PropertyOwner", fields: [ownerId], references: [id])
+  
+  media            PropertyMedia[]
+  features         PropertyFeature[]
+  views            PropertyView[]
+  favorites        Favorite[]
+  reports          PropertyReport[]
+  viewings         Viewing[]
+  verification     PropertyVerification?
+  leadInterests    LeadPropertyInterest[]
+  inquiries        LeadInquiry[]
+
+  // E11 Personalization
+  recentlyViewed   RecentlyViewed[]
+  recommendationFeedback RecommendationFeedback[]
+  
+  purpose          Purpose
+  
+  // Pricing
+  price            Float
+  currency         String         @default("EGP")
+  
+  // Details
+  area             Float
+  unit             String         @default("SQM")
+  bedrooms         Int?
+  bathrooms        Int?
+  floor            Int?
+  buildingFloors   Int?
+  furnishingStatus String?        // UNFURNISHED, SEMI_FURNISHED, FULLY_FURNISHED
+  finishingStatus  String?        // CORE_AND_SHELL, FULLY_FINISHED, etc.
+  
+  // Location
+  country          String?
+  city             String?
+  areaLocation     String?        // "Area" field (avoiding 'area' conflict with size)
+  address          String?
+  latitude         Float?
+  longitude        Float?
+  locationPrivacy  LocationPrivacy @default(EXACT)
+  
+  status           PropertyStatus @default(DRAFT)
+  listingQuality   Int?           // Score from 0 to 100
+  
+  // Relations
+  paymentPlans     PaymentPlan[]
+  events           PropertyEvent[]
+  
+  // Investment Preferences
+  investmentType   InvestmentType?
+  expectedRentalYield Float?
+  deliveryDate     DateTime?
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  
+  // Indexes
+  @@index([ownerId])
+  @@index([status])
+  @@index([city])
+  @@index([price])
+}
+
+model PropertyMedia {
+  id           String      @id @default(uuid())
+  propertyId   String
+  property     Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  type         MediaType
+  url          String
+  thumbnailUrl String?
+  sortOrder    Int         @default(0)
+  isCover      Boolean     @default(false)
+  status       MediaStatus @default(ACTIVE)
+  
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([propertyId])
+  @@index([isCover])
+}
+
+// PSF-15 Dynamic Features (e.g. Pool, Gym, Balcony)
+model Feature {
+  id          String            @id @default(uuid())
+  name        String            @unique // e.g. "Pool", "Gym"
+  icon        String?           // Optional icon identifier
+  
+  properties  PropertyFeature[]
+}
+
+model PropertyFeature {
+  propertyId  String
+  featureId   String
+  
+  property    Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  feature     Feature   @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, featureId])
+}
+
+// PD-14 Tracking views
+model PropertyView {
+  id                String    @id @default(uuid())
+  propertyId        String
+  anonymousSessionId String?
+  userId            String?   // If logged in
+  source            String?   // e.g. "SEARCH", "DIRECT"
+  viewedAt          DateTime  @default(now())
+
+  property          Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+}
+
+// Lead relations are now handled by the Lead model above
+
+// Epic 5: Advanced Search & Matching
+
+enum PaymentMethod {
+  CASH
+  INSTALLMENTS
+  BOTH
+}
+
+enum InvestmentType {
+  RENTAL_YIELD
+  CAPITAL_APPRECIATION
+  BOTH
+}
+
+model SavedSearch {
+  id              String   @id @default(uuid())
+  userId          String   // Can be actual user ID or Anonymous ID
+  name            String
+  filters         Json
+  alertEnabled    Boolean  @default(true) // E11.10 Smart Search Alerts
+  lastMatchCount  Int      @default(0)    // E11.10 track how many matches last time
+  newMatchCount   Int      @default(0)    // E11.10 new matches since last check
+  lastCheckedAt   DateTime? // E11.10 when was the alert last checked
+  createdAt       DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id], map: "SavedSearch_User_userId_fkey")
+
+  @@index([userId])
+}
+
+// Epic 4: Discovery & Details Models
+
+model Favorite {
+  id                    String   @id @default(uuid())
+  userId                String   // Can be actual user ID or Anonymous ID
+  propertyId            String
+  priceAtFavorite       Float?   // E11.11 Price at the time of favoriting
+  notifyOnPriceDrop     Boolean  @default(true)  // E11.11
+  notifyOnAvailability  Boolean  @default(true)  // E11.12
+  property              Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdAt             DateTime @default(now())
+
+  user       User?    @relation(fields: [userId], references: [id], map: "Favorite_User_userId_fkey")
+
+  @@unique([userId, propertyId])
+  @@index([userId])
+}
+
+model PropertyReport {
+  id          String   @id @default(uuid())
+  propertyId  String
+  reporterId  String?
+  reason      String
+  description String?
+  status      String   @default("OPEN")
+  resolvedBy  String?
+  resolvedAt  DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@index([reporterId])
+  @@index([status])
+}
+
+model PropertyVerification {
+  id          String   @id @default(uuid())
+  propertyId  String   @unique
+  reviewerId  String?
+  status      String   // APPROVED, REJECTED, CHANGES_REQUESTED
+  reason      String?
+  notes       String?
+  reviewedAt  DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@index([status])
+  @@index([reviewerId])
+}
+
+model AgentVerification {
+  id          String   @id @default(uuid())
+  agentId     String   @unique
+  reviewerId  String?
+  status      String   // PENDING, UNDER_REVIEW, APPROVED, REJECTED, SUSPENDED, EXPIRED
+  documents   Json?
+  notes       String?
+  expiresAt   DateTime?
+  reviewedAt  DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  agent       User     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([status])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorId     String?
+  action      String
+  entityType  String
+  entityId    String
+  metadata    Json?
+
+  createdAt   DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// Epic 5: Anonymous Personalization
+
+model AnonymousSession {
+  id              String   @id @default(uuid())
+  sessionToken    String   @unique
+
+  language        String   @default("ar")
+  currency        String   @default("EGP")
+
+  firstSeenAt     DateTime @default(now())
+  lastSeenAt      DateTime @updatedAt
+  expiresAt       DateTime?
+
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id])
+
+  events          UserEvent[]
+}
+
+model UserEvent {
+  id          String   @id @default(uuid())
+
+  sessionId   String
+  userId      String?
+  eventType   String
+  propertyId  String?
+  metadata    Json?
+
+  createdAt   DateTime @default(now())
+
+  session     AnonymousSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user        User?    @relation(fields: [userId], references: [id], map: "UserEvent_User_userId_fkey")
+
+  @@index([sessionId])
+  @@index([userId])
+  @@index([eventType])
+  @@index([createdAt])
+}
+
+model PaymentPlan {
+  id              String   @id @default(uuid())
+  propertyId      String
+  name            String?
+  paymentType     String
+
+  totalPrice      Float?
+  downPayment     Float?
+  installment     Float?
+
+  frequency       String?
+  durationMonths  Int?
+
+  property        Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([propertyId])
+}
+
+model PropertyEvent {
+  id          String   @id @default(uuid())
+
+  propertyId  String
+  eventType   String
+  sessionId   String?
+  userId      String?
+
+  metadata    Json?
+
+  createdAt   DateTime @default(now())
+
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@index([eventType])
+  @@index([createdAt])
+}
+
+// ─── Epic 11: Personalized User Experience ─────────────────────────────────────
+
+model UserPreference {
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+
+  // Explicit Preferences (E11.2)
+  preferredLocations    Json?    // ["Hurghada","El Gouna"]
+  preferredPropertyTypes Json?   // ["APARTMENT","CHALET"]
+  purpose               String?  // LIVING, INVESTMENT, VACATION, COMMERCIAL
+  budgetMin             Float?
+  budgetMax             Float?
+  bedroomsMin           Int?
+  bedroomsMax           Int?
+  paymentPreference     String?  // CASH, INSTALLMENTS, BOTH
+  preferredAmenities    Json?    // ["SEA_VIEW","POOL","GYM"]
+  preferredFinishing    String?  // FULLY_FINISHED, SEMI_FINISHED, CORE_SHELL
+
+  // Implicit Preferences / Learned Weights (E11.3 & E11.4)
+  implicitWeights       Json?    // { "SEA_VIEW": 0.92, "APARTMENT": 0.88, "Hurghada": 0.84, ... }
+
+  // Personalization Settings (E11.16 & E11.28)
+  personalizationEnabled Boolean @default(true)
+  onboardingCompleted    Boolean @default(false)
+
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model RecentlyViewed {
+  id          String   @id @default(uuid())
+  userId      String
+  propertyId  String
+
+  viewCount   Int      @default(1)   // E11.5 how many times viewed
+  lastViewedAt DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, propertyId])
+  @@index([userId])
+  @@index([lastViewedAt])
+}
+
+model RecommendationFeedback {
+  id          String   @id @default(uuid())
+  userId      String
+  propertyId  String
+
+  feedbackType String  // HELPFUL, NOT_HELPFUL, NOT_INTERESTED
+  reason       String? // TOO_EXPENSIVE, WRONG_LOCATION, WRONG_TYPE, TOO_SMALL, OTHER (E11.17)
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, propertyId])
+  @@index([userId])
+  @@index([feedbackType])
+}
+
