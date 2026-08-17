@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Main building shape -->
+  <path d="M 10,90 L 10,40 A 20,20 0 0,1 50,40 A 20,20 0 0,1 90,40 L 90,90 Z" fill="#152D5B" />
+  
+  <!-- Left window -->
+  <path d="M 25,60 L 25,45 A 5,5 0 0,1 35,45 L 35,60 Z" fill="#FFFFFF" />
+  
+  <!-- Right window -->
+  <path d="M 65,60 L 65,45 A 5,5 0 0,1 75,45 L 75,60 Z" fill="#FFFFFF" />
+  
+  <!-- Door -->
+  <rect x="42" y="70" width="16" height="20" fill="#FFFFFF" />
+  
+  <!-- Door handle -->
+  <circle cx="55" cy="80" r="1" fill="#152D5B" />
+</svg>
