@@ -27,6 +27,7 @@ const AgentDashboard = lazy(() => import('./features/agent/components/AgentDashb
 const CreatePropertyWizard = lazy(() => import('./features/agent/components/CreatePropertyWizard').then(m => ({ default: m.CreatePropertyWizard })));
 const AdminDashboard = lazy(() => import('./features/admin/components/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 const LeadPipeline = lazy(() => import('./features/leads/components/LeadPipeline').then(m => ({ default: m.LeadPipeline })));
+const ComparisonPage = lazy(() => import('./pages/ComparisonPage').then(m => ({ default: m.ComparisonPage })));
 
 const LoadingFallback = () => (
   <div className="flex items-center justify-center min-h-[60vh]">
@@ -304,6 +305,7 @@ export default function App() {
             <Route index element={<HomePage />} />
             <Route path="search" element={<PropertySearchPage />} />
             <Route path="properties/:slug" element={<PropertyDetailsPage />} />
+            <Route path="compare" element={<ComparisonPage />} />
             <Route path="properties/new" element={
               <div className="py-12">
                 <AddPropertyForm />

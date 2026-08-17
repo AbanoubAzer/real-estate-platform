@@ -15,6 +15,7 @@ import { LeadsModule } from './leads/leads.module';
 import { ViewingsModule } from './viewings/viewings.module';
 import { AiModule } from './ai/ai.module';
 import { PersonalizationModule } from './personalization/personalization.module';
+import { ComparisonModule } from './comparison/comparison.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { PersonalizationModule } from './personalization/personalization.module'
     ViewingsModule,
     AiModule,
     PersonalizationModule,
+    ComparisonModule,
   ],
   controllers: [AppController],
   providers: [

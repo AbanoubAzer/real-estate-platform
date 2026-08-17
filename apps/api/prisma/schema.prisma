@@ -89,6 +89,10 @@ model User {
   preference          UserPreference?
   recentlyViewed      RecentlyViewed[]
   recommendationFeedback RecommendationFeedback[]
+
+  // E12 Comparison
+  comparisons         Comparison[]
+  comparisonFeedbacks ComparisonFeedback[]
   
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
@@ -680,3 +684,39 @@ model RecommendationFeedback {
   @@index([feedbackType])
 }
 
+// ─── Epic 12: Property Comparison & AI Decision Assistant ────────────────────
+
+model Comparison {
+  id              String   @id @default(uuid())
+  userId          String?  // Can be anonymous initially
+  name            String?  // e.g. "My Hurghada Shortlist"
+  propertyIds     String[] // Array of property IDs being compared
+  criteriaWeights Json?    // Custom weights: { "price": 40, "location": 20, ... }
+  shareToken      String?  @unique // For shared links
+
+  user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feedbacks       ComparisonFeedback[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model ComparisonFeedback {
+  id              String   @id @default(uuid())
+  comparisonId    String
+  userId          String?
+  
+  isHelpful       Boolean
+  missingInfo     String[] // e.g. ["Price", "Amenities"]
+  comment         String?
+
+  comparison      Comparison @relation(fields: [comparisonId], references: [id], onDelete: Cascade)
+  user            User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime   @default(now())
+
+  @@index([comparisonId])
+  @@index([userId])
+}

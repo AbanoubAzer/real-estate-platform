@@ -1,16 +1,19 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSearchFilters } from '../features/properties/hooks/useSearchFilters';
 import { SearchFilters } from '../features/properties/components/search/SearchFilters';
-import { Home, Building, MapPin, Sparkles, Bookmark, SlidersHorizontal } from 'lucide-react';
+import { Home, Building, MapPin, Scale } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AiSearchBox } from '../features/search/components/AiSearchBox';
 import { AIMatchBadge } from '../features/ai-search/components/AIMatchBadge';
 import { useSession } from '../features/shared/hooks/useSession';
 import { useQuery } from '@tanstack/react-query';
+import { useComparisonStore } from '../features/comparison/store/useComparisonStore';
 
 export const PropertySearchPage = () => {
   const { searchString, updateFilter, filters } = useSearchFilters();
   const { sessionId } = useSession();
+  const addPropertyToCompare = useComparisonStore((state) => state.addProperty);
+  const comparedProperties = useComparisonStore((state) => state.properties);
 
   const { data: result, isLoading } = useQuery({
     queryKey: ['properties', searchString],
@@ -98,9 +101,28 @@ export const PropertySearchPage = () => {
                           alt={prop.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                         />
-                        <div className="absolute top-3 left-3 z-10">
+                        <div className="absolute top-3 left-3 z-10 flex gap-2">
                           <AIMatchBadge score={prop.matchScore || Math.floor(Math.random() * 25 + 75)} reasonsAr={prop.reasonsAr} />
                         </div>
+                        <button 
+                          onClick={(e) => {
+                            e.preventDefault();
+                            addPropertyToCompare({
+                              id: prop.id,
+                              title: prop.title,
+                              price: prop.price,
+                              image: prop.media?.[0]?.url || 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=600'
+                            });
+                          }}
+                          className={`absolute top-3 right-3 z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                            comparedProperties.some(p => p.id === prop.id)
+                              ? 'bg-accent text-white'
+                              : 'bg-white/80 hover:bg-accent hover:text-white text-gray-700 backdrop-blur-sm'
+                          }`}
+                          title="Add to compare"
+                        >
+                          <Scale size={14} />
+                        </button>
                       </div>
                       <div className="p-5 text-right">
                         <div className="font-en font-extrabold text-xl text-primary mb-1">

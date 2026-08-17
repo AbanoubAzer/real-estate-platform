@@ -9,8 +9,9 @@ import { AiMatchExplanation } from '../features/properties/components/details/Ai
 import { PropertyLocation } from '../features/properties/components/details/PropertyLocation';
 import { PersonalizedRecommendations } from '../features/ai-search/components/PersonalizedRecommendations';
 import { useSession } from '../features/shared/hooks/useSession';
-import { MapPin, Home, Building, Check, Share2, Heart, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { MapPin, Home, Building, Check, Share2, Heart, ShieldCheck, AlertTriangle, Scale } from 'lucide-react';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import { useComparisonStore } from '../features/comparison/store/useComparisonStore';
 
 export const PropertyDetailsPage = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -19,6 +20,8 @@ export const PropertyDetailsPage = () => {
   const { sessionId } = useSession();
   
   const [isFavorite, setIsFavorite] = useState(false);
+  const addPropertyToCompare = useComparisonStore((state) => state.addProperty);
+  const comparedProperties = useComparisonStore((state) => state.properties);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -177,7 +180,21 @@ export const PropertyDetailsPage = () => {
               </div>
 
               {/* Actions */}
-              <div className="absolute top-8 left-8 flex gap-3">
+              <div className="absolute top-8 left-8 flex gap-3 flex-wrap justify-end">
+                <button 
+                  onClick={() => {
+                    addPropertyToCompare({
+                      id: property.id,
+                      title: property.title,
+                      price: property.price,
+                      image: property.media?.[0]?.url || 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=600'
+                    });
+                  }}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${comparedProperties.some(p => p.id === property.id) ? 'bg-accent text-white' : 'bg-gray-50 text-gray-600 hover:text-accent hover:bg-accent/10'}`}
+                  title="أضف للمقارنة"
+                >
+                  <Scale size={20} />
+                </button>
                 <button onClick={handleFavorite} className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isFavorite ? 'bg-red-50 text-red-500' : 'bg-gray-50 text-gray-600 hover:text-red-500 hover:bg-red-50'}`}>
                   <Heart size={20} fill={isFavorite ? 'currentColor' : 'none'} />
                 </button>
